@@ -1,174 +1,165 @@
--- Place this in StarterGui > LocalScript
+-- LocalScript (put in StarterGui)
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
 
--- Create RemoteFunction if it doesn't exist
-local rf = ReplicatedStorage:FindFirstChild("GetGlobalSummary")
-if not rf then
-    rf = Instance.new("RemoteFunction")
-    rf.Name = "GetGlobalSummary"
-    rf.Parent = ReplicatedStorage
-end
+-- Configuration
+local placeId = tostring(game.PlaceId) -- uses the current place ID; for universes you'd use the universe id if desired
+local limitPerPage = 100 -- API allows up to 100
+local baseUrl = ("https://games.roblox.com/v1/games/%s/servers/Public"):format(placeId)
 
--- ==============================
--- GUI Setup
--- ==============================
-local screenGui = Instance.new("ScreenGui", playerGui)
-screenGui.Name = "PaginatedServerBrowser"
-
-local frame = Instance.new("Frame", screenGui)
-frame.Size = UDim2.new(0, 450, 0, 500)
-frame.Position = UDim2.new(1, -460, 0.5, -250)
-frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-frame.BorderSizePixel = 0
-frame.Active = true
-frame.Draggable = true
-
--- Toggle Button
-local toggleBtn = Instance.new("TextButton", frame)
-toggleBtn.Size = UDim2.new(0, 30, 0, 30)
-toggleBtn.Position = UDim2.new(1, -35, 0, 0)
-toggleBtn.Text = "⯈"
-toggleBtn.Font = Enum.Font.SourceSansBold
-toggleBtn.TextSize = 20
-toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
-local isOpen = true
-toggleBtn.MouseButton1Click:Connect(function()
-    isOpen = not isOpen
-    frame.Size = isOpen and UDim2.new(0, 450, 0, 500) or UDim2.new(0, 40, 0, 30)
-    toggleBtn.Text = isOpen and "⯈" or "⯇"
-end)
-
--- Title
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1, -40, 0, 30)
-title.Position = UDim2.new(0, 0, 0, 0)
-title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-title.Text = "🌐 Server Browser"
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.Font = Enum.Font.SourceSansBold
-title.TextSize = 18
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.RichText = true
-
--- Search Box
-local searchBox = Instance.new("TextBox", frame)
-searchBox.Size = UDim2.new(1, -40, 0, 30)
-searchBox.Position = UDim2.new(0, 0, 0, 30)
-searchBox.PlaceholderText = "Search player..."
-searchBox.Text = ""
-searchBox.ClearTextOnFocus = false
-searchBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-searchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-searchBox.Font = Enum.Font.SourceSans
-searchBox.TextSize = 16
-
--- Refresh Button
-local refreshBtn = Instance.new("TextButton", frame)
-refreshBtn.Size = UDim2.new(0, 50, 0, 24)
-refreshBtn.Position = UDim2.new(1, -60, 0, 3)
-refreshBtn.Text = "↻"
-refreshBtn.Font = Enum.Font.SourceSansBold
-refreshBtn.TextSize = 18
-refreshBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-refreshBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
--- Scrolling Frame for servers
-local scrollingFrame = Instance.new("ScrollingFrame", frame)
-scrollingFrame.Size = UDim2.new(1, 0, 1, -60)
-scrollingFrame.Position = UDim2.new(0, 0, 0, 60)
-scrollingFrame.BackgroundTransparency = 1
-scrollingFrame.ScrollBarThickness = 8
-
-local UIListLayout = Instance.new("UIListLayout", scrollingFrame)
-UIListLayout.Padding = UDim.new(0, 3)
-UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
--- ==============================
--- Functions
--- ==============================
-
-local function createServerEntry(serverIndex, samplePlayers)
-    local container = Instance.new("Frame", scrollingFrame)
-    container.Size = UDim2.new(1, -10, 0, 20)
-    container.BackgroundTransparency = 1
-
-    local label = Instance.new("TextLabel", container)
-    label.Size = UDim2.new(1, 0, 0, 20)
-    label.BackgroundTransparency = 1
-    label.TextColor3 = Color3.fromRGB(200, 200, 200)
-    label.Font = Enum.Font.SourceSans
-    label.TextSize = 16
-    label.Text = string.format("Server %d sample: %s", serverIndex, table.concat(samplePlayers, ", "))
-    label.TextXAlignment = Enum.TextXAlignment.Left
-
-    local viewMore = Instance.new("TextButton", container)
-    viewMore.Size = UDim2.new(0, 80, 0, 20)
-    viewMore.Position = UDim2.new(1, -85, 0, 0)
-    viewMore.Text = "View More"
-    viewMore.Font = Enum.Font.SourceSansBold
-    viewMore.TextSize = 14
-    viewMore.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    viewMore.TextColor3 = Color3.fromRGB(255, 255, 255)
-
-    -- Pagination: expand sample players
-    viewMore.MouseButton1Click:Connect(function()
-        local prompt = Instance.new("TextLabel", container)
-        prompt.Size = UDim2.new(1, 0, 0, 20)
-        prompt.Position = UDim2.new(0, 0, 0, 22)
-        prompt.BackgroundTransparency = 1
-        prompt.TextColor3 = Color3.fromRGB(150, 150, 150)
-        prompt.Font = Enum.Font.SourceSans
-        prompt.TextSize = 14
-        prompt.Text = "Additional players loaded (pagination placeholder)"
-    end)
-end
-
-local function refresh()
-    local success, data = pcall(function()
-        return rf:InvokeServer()
-    end)
-    if not success or not data then return end
-
-    local filterText = searchBox.Text:lower()
-
-    -- Clear old entries
-    for _, child in ipairs(scrollingFrame:GetChildren()) do
-        child:Destroy()
+-- Utility: safe get async with pcall
+local function safeGet(url)
+    local ok, res = pcall(HttpService.GetAsync, HttpService, url, true)
+    if not ok then
+        return false, res
     end
+    local decodeOk, data = pcall(HttpService.JSONDecode, HttpService, res)
+    if not decodeOk then
+        return false, data
+    end
+    return true, data
+end
 
-    -- Header
-    local header = Instance.new("TextLabel", scrollingFrame)
-    header.Size = UDim2.new(1, -10, 0, 20)
-    header.BackgroundTransparency = 1
-    header.TextColor3 = Color3.fromRGB(255, 255, 0)
-    header.Font = Enum.Font.SourceSansBold
-    header.TextSize = 16
-    header.Text = string.format("Servers: %d | Players: %d", data.TotalServers or 0, data.TotalPlayers or 0)
-    header.TextXAlignment = Enum.TextXAlignment.Left
+-- Fetch all pages and collect job ids
+local function fetchAllJobIds()
+    local jobIds = {}
+    local cursor = nil
+    while true do
+        local url = baseUrl .. ("?limit=%d&sortOrder=Asc"):format(limitPerPage)
+        if cursor and cursor ~= "" then
+            url = url .. "&cursor=" .. HttpService:UrlEncode(tostring(cursor))
+        end
 
-    -- List servers with sample players
-    if data.SamplePlayers then
-        for i, name in ipairs(data.SamplePlayers) do
-            if name:lower():find(filterText) then
-                createServerEntry(i, {name})
+        local ok, data = safeGet(url)
+        if not ok then
+            warn("Failed to fetch servers: ", data)
+            break
+        end
+
+        if data and data.data and #data.data > 0 then
+            for _, server in ipairs(data.data) do
+                if server.id then
+                    table.insert(jobIds, server.id)
+                end
             end
         end
+
+        -- pagination cursor (may be nil or empty when no more pages)
+        cursor = data.nextPageCursor
+        if not cursor or cursor == "" then
+            break
+        end
+
+        -- tiny wait to be a bit nicer to the API (adjust as needed)
+        task.wait(0.2)
     end
 
-    scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, (#scrollingFrame:GetChildren()) * 25)
+    return jobIds
 end
 
--- Connect events
-refreshBtn.MouseButton1Click:Connect(refresh)
-searchBox:GetPropertyChangedSignal("Text"):Connect(refresh)
+-- Build a simple GUI to show the job ids
+local function showGui(jobIds)
+    -- cleanup any old GUI by name
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "ServerJobIdLister"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- Auto-refresh every 30s
-refresh()
-while task.wait(30) do
-    refresh()
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 420, 0, 360)
+    frame.Position = UDim2.new(0.5, -210, 0.5, -180)
+    frame.AnchorPoint = Vector2.new(0.5, 0.5)
+    frame.BackgroundTransparency = 0.15
+    frame.Parent = screenGui
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 36)
+    title.BackgroundTransparency = 1
+    title.Text = "Server Job IDs (" .. tostring(#jobIds) .. ")"
+    title.Font = Enum.Font.SourceSansBold
+    title.TextSize = 18
+    title.Parent = frame
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 28, 0, 28)
+    closeBtn.Position = UDim2.new(1, -34, 0, 4)
+    closeBtn.Text = "X"
+    closeBtn.Parent = frame
+    closeBtn.MouseButton1Click:Connect(function()
+        screenGui:Destroy()
+    end)
+
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Size = UDim2.new(1, -12, 1, -56)
+    scroll.Position = UDim2.new(0, 6, 0, 42)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, math.max(1, #jobIds) * 34)
+    scroll.Parent = frame
+    scroll.BorderSizePixel = 0
+    scroll.ScrollBarThickness = 6
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 6)
+    layout.Parent = scroll
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    for i, id in ipairs(jobIds) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -10, 0, 28)
+        btn.Position = UDim2.new(0, 5, 0, (i-1)*34)
+        btn.Text = id
+        btn.Font = Enum.Font.SourceSans
+        btn.TextSize = 16
+        btn.Parent = scroll
+
+        btn.MouseButton1Click:Connect(function()
+            print("Clicked jobId:", id)
+            -- attempt to copy to clipboard if environment supports setclipboard
+            local success, err = pcall(function()
+                if setclipboard then
+                    setclipboard(tostring(id))
+                else
+                    error("setclipboard not available in this environment")
+                end
+            end)
+            if success then
+                -- give a quick visible feedback (temporary text change)
+                local old = btn.Text
+                btn.Text = "Copied ✓"
+                task.delay(0.9, function()
+                    if btn and btn.Parent then btn.Text = old end
+                end)
+            else
+                -- fallback: print message (clipboard not available)
+                warn("Could not copy to clipboard: ", err)
+            end
+        end)
+    end
 end
+
+-- Main
+spawn(function()
+    -- quick check for HttpService enabled
+    local success, test = pcall(function()
+        -- try a quick request to a small endpoint to see if HTTP is allowed (we use the same endpoint with limit=1)
+        local url = baseUrl .. "?limit=1"
+        local ok, data = safeGet(url)
+        if not ok then
+            error(data)
+        end
+        return true
+    end)
+
+    if not success then
+        warn("HTTP requests appear disabled or failed. Enable HTTP Requests in Game Settings. Error: ", test)
+        return
+    end
+
+    local jobIds = fetchAllJobIds()
+    print("Found " .. tostring(#jobIds) .. " public server job IDs.")
+    if #jobIds == 0 then
+        warn("No public servers found (or API returned none).")
+    else
+        showGui(jobIds)
+    end
+end)
