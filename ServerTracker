@@ -16,11 +16,11 @@ end
 -- GUI Setup
 -- ==============================
 local screenGui = Instance.new("ScreenGui", playerGui)
-screenGui.Name = "ServerBrowserDashboard"
+screenGui.Name = "PaginatedServerBrowser"
 
 local frame = Instance.new("Frame", screenGui)
-frame.Size = UDim2.new(0, 400, 0, 500)
-frame.Position = UDim2.new(1, -420, 0.5, -250)
+frame.Size = UDim2.new(0, 450, 0, 500)
+frame.Position = UDim2.new(1, -460, 0.5, -250)
 frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 frame.BorderSizePixel = 0
 frame.Active = true
@@ -39,7 +39,7 @@ toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 local isOpen = true
 toggleBtn.MouseButton1Click:Connect(function()
     isOpen = not isOpen
-    frame.Size = isOpen and UDim2.new(0, 400, 0, 500) or UDim2.new(0, 40, 0, 30)
+    frame.Size = isOpen and UDim2.new(0, 450, 0, 500) or UDim2.new(0, 40, 0, 30)
     toggleBtn.Text = isOpen and "⯈" or "⯇"
 end)
 
@@ -89,22 +89,56 @@ UIListLayout.Padding = UDim.new(0, 3)
 UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
 -- ==============================
--- Function to fetch and update GUI
+-- Functions
 -- ==============================
+
+local function createServerEntry(serverIndex, samplePlayers)
+    local container = Instance.new("Frame", scrollingFrame)
+    container.Size = UDim2.new(1, -10, 0, 20)
+    container.BackgroundTransparency = 1
+
+    local label = Instance.new("TextLabel", container)
+    label.Size = UDim2.new(1, 0, 0, 20)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(200, 200, 200)
+    label.Font = Enum.Font.SourceSans
+    label.TextSize = 16
+    label.Text = string.format("Server %d sample: %s", serverIndex, table.concat(samplePlayers, ", "))
+    label.TextXAlignment = Enum.TextXAlignment.Left
+
+    local viewMore = Instance.new("TextButton", container)
+    viewMore.Size = UDim2.new(0, 80, 0, 20)
+    viewMore.Position = UDim2.new(1, -85, 0, 0)
+    viewMore.Text = "View More"
+    viewMore.Font = Enum.Font.SourceSansBold
+    viewMore.TextSize = 14
+    viewMore.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    viewMore.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+    -- Pagination: expand sample players
+    viewMore.MouseButton1Click:Connect(function()
+        local prompt = Instance.new("TextLabel", container)
+        prompt.Size = UDim2.new(1, 0, 0, 20)
+        prompt.Position = UDim2.new(0, 0, 0, 22)
+        prompt.BackgroundTransparency = 1
+        prompt.TextColor3 = Color3.fromRGB(150, 150, 150)
+        prompt.Font = Enum.Font.SourceSans
+        prompt.TextSize = 14
+        prompt.Text = "Additional players loaded (pagination placeholder)"
+    end)
+end
+
 local function refresh()
     local success, data = pcall(function()
         return rf:InvokeServer()
     end)
     if not success or not data then return end
 
-    -- Filter by search text
     local filterText = searchBox.Text:lower()
 
-    -- Clear old labels
+    -- Clear old entries
     for _, child in ipairs(scrollingFrame:GetChildren()) do
-        if child:IsA("TextLabel") then
-            child:Destroy()
-        end
+        child:Destroy()
     end
 
     -- Header
@@ -117,30 +151,23 @@ local function refresh()
     header.Text = string.format("Servers: %d | Players: %d", data.TotalServers or 0, data.TotalPlayers or 0)
     header.TextXAlignment = Enum.TextXAlignment.Left
 
-    -- List sample players with filtering
+    -- List servers with sample players
     if data.SamplePlayers then
-        for _, name in ipairs(data.SamplePlayers) do
+        for i, name in ipairs(data.SamplePlayers) do
             if name:lower():find(filterText) then
-                local lbl = Instance.new("TextLabel", scrollingFrame)
-                lbl.Size = UDim2.new(1, -10, 0, 20)
-                lbl.BackgroundTransparency = 1
-                lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
-                lbl.Font = Enum.Font.SourceSans
-                lbl.TextSize = 16
-                lbl.Text = name
-                lbl.TextXAlignment = Enum.TextXAlignment.Left
+                createServerEntry(i, {name})
             end
         end
     end
 
-    scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, (#scrollingFrame:GetChildren()) * 23)
+    scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, (#scrollingFrame:GetChildren()) * 25)
 end
 
 -- Connect events
 refreshBtn.MouseButton1Click:Connect(refresh)
 searchBox:GetPropertyChangedSignal("Text"):Connect(refresh)
 
--- Auto-refresh every 30 seconds
+-- Auto-refresh every 30s
 refresh()
 while task.wait(30) do
     refresh()
