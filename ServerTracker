@@ -1,0 +1,166 @@
+--// Global All-Server Player List (Single Script for StarterGui)
+--// Just drop this into StarterGui
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- === AUTO SETUP FOR SERVER COMMUNICATION ===
+if game:GetService("RunService"):IsClient() then
+	local player = Players.LocalPlayer
+
+	-- create remote function on server if missing
+	local createRemote = Instance.new("RemoteFunction")
+	createRemote.Name = "GetGlobalPlayers"
+
+	createRemote.Parent = ReplicatedStorage
+
+	-- tell the server to set up logic when first player joins
+	game:GetService("ReplicatedStorage"):WaitForChild("GetGlobalPlayers")
+
+	-- Request server to create server-side code if not exists
+	local success = pcall(function()
+		return createRemote:InvokeServer("setup_server")
+	end)
+
+	----------------------------------------------------------------
+	-- GUI SECTION (Client)
+	----------------------------------------------------------------
+	local playerGui = player:WaitForChild("PlayerGui")
+
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "GlobalPlayerListGui"
+	screenGui.ResetOnSpawn = false
+	screenGui.Parent = playerGui
+
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(0, 260, 0, 320)
+	frame.Position = UDim2.new(1, -270, 0.5, -160)
+	frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+	frame.BorderSizePixel = 0
+	frame.Active = true
+	frame.Draggable = true
+	frame.Parent = screenGui
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, 0, 0, 30)
+	title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	title.Text = "🌐 All Server Players"
+	title.TextColor3 = Color3.new(1, 1, 1)
+	title.Font = Enum.Font.SourceSansBold
+	title.TextSize = 18
+	title.Parent = frame
+
+	local refreshButton = Instance.new("TextButton")
+	refreshButton.Size = UDim2.new(0, 60, 0, 24)
+	refreshButton.Position = UDim2.new(1, -65, 0, 3)
+	refreshButton.Text = "↻"
+	refreshButton.Font = Enum.Font.SourceSansBold
+	refreshButton.TextSize = 18
+	refreshButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	refreshButton.TextColor3 = Color3.new(1, 1, 1)
+	refreshButton.Parent = frame
+
+	local scrollingFrame = Instance.new("ScrollingFrame")
+	scrollingFrame.Size = UDim2.new(1, 0, 1, -30)
+	scrollingFrame.Position = UDim2.new(0, 0, 0, 30)
+	scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+	scrollingFrame.BackgroundTransparency = 1
+	scrollingFrame.ScrollBarThickness = 6
+	scrollingFrame.Parent = frame
+
+	local UIListLayout = Instance.new("UIListLayout")
+	UIListLayout.Parent = scrollingFrame
+	UIListLayout.Padding = UDim.new(0, 3)
+
+	local function updateGlobalPlayers()
+		local success, players = pcall(function()
+			return createRemote:InvokeServer("get_players")
+		end)
+		if not success then return end
+
+		for _, child in ipairs(scrollingFrame:GetChildren()) do
+			if child:IsA("TextLabel") then
+				child:Destroy()
+			end
+		end
+
+		for _, name in ipairs(players or {}) do
+			local label = Instance.new("TextLabel")
+			label.Size = UDim2.new(1, -10, 0, 20)
+			label.BackgroundTransparency = 1
+			label.TextColor3 = Color3.fromRGB(200, 200, 200)
+			label.Font = Enum.Font.SourceSans
+			label.TextSize = 16
+			label.Text = name
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.Parent = scrollingFrame
+		end
+
+		scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, #(players or {}) * 23)
+	end
+
+	refreshButton.MouseButton1Click:Connect(updateGlobalPlayers)
+	updateGlobalPlayers()
+
+	while task.wait(20) do
+		updateGlobalPlayers()
+	end
+
+else
+	----------------------------------------------------------------
+	-- SERVER SECTION (auto-injected)
+	----------------------------------------------------------------
+	local Players = game:GetService("Players")
+	local MessagingService = game:GetService("MessagingService")
+	local MemoryStoreService = game:GetService("MemoryStoreService")
+
+	local playerStore = MemoryStoreService:GetSortedMap("GlobalPlayers")
+	local JOB_ID = game.JobId
+
+	local function updatePlayerList()
+		local playerNames = {}
+		for _, plr in ipairs(Players:GetPlayers()) do
+			table.insert(playerNames, plr.DisplayName .. "(@" .. plr.Name .. ")")
+		end
+
+		pcall(function()
+			playerStore:SetAsync(JOB_ID, playerNames, 60)
+		end)
+
+		pcall(function()
+			MessagingService:PublishAsync("GlobalPlayerListUpdated", JOB_ID)
+		end)
+	end
+
+	Players.PlayerAdded:Connect(updatePlayerList)
+	Players.PlayerRemoving:Connect(updatePlayerList)
+	updatePlayerList()
+
+	task.spawn(function()
+		while task.wait(30) do
+			updatePlayerList()
+		end
+	end)
+
+	local remote = ReplicatedStorage:FindFirstChild("GetGlobalPlayers") or Instance.new("RemoteFunction")
+	remote.Name = "GetGlobalPlayers"
+	remote.Parent = ReplicatedStorage
+
+	remote.OnServerInvoke = function(player, mode)
+		if mode == "get_players" then
+			local allPlayers = {}
+			local success, result = pcall(function()
+				return playerStore:GetRangeAsync(Enum.SortDirection.Ascending, 100)
+			end)
+
+			if success and result then
+				for _, entry in ipairs(result) do
+					local list = entry.value
+					for _, name in ipairs(list) do
+						table.insert(allPlayers, name)
+					end
+				end
+			end
+			return allPlayers
+		end
+	end
+end
