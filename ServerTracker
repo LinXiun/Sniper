@@ -1,166 +1,147 @@
---// Global All-Server Player List (Single Script for StarterGui)
---// Just drop this into StarterGui
+-- Place this in StarterGui > LocalScript
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
--- === AUTO SETUP FOR SERVER COMMUNICATION ===
-if game:GetService("RunService"):IsClient() then
-	local player = Players.LocalPlayer
+-- Create RemoteFunction if it doesn't exist
+local rf = ReplicatedStorage:FindFirstChild("GetGlobalSummary")
+if not rf then
+    rf = Instance.new("RemoteFunction")
+    rf.Name = "GetGlobalSummary"
+    rf.Parent = ReplicatedStorage
+end
 
-	-- create remote function on server if missing
-	local createRemote = Instance.new("RemoteFunction")
-	createRemote.Name = "GetGlobalPlayers"
+-- ==============================
+-- GUI Setup
+-- ==============================
+local screenGui = Instance.new("ScreenGui", playerGui)
+screenGui.Name = "ServerBrowserDashboard"
 
-	createRemote.Parent = ReplicatedStorage
+local frame = Instance.new("Frame", screenGui)
+frame.Size = UDim2.new(0, 400, 0, 500)
+frame.Position = UDim2.new(1, -420, 0.5, -250)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
 
-	-- tell the server to set up logic when first player joins
-	game:GetService("ReplicatedStorage"):WaitForChild("GetGlobalPlayers")
+-- Toggle Button
+local toggleBtn = Instance.new("TextButton", frame)
+toggleBtn.Size = UDim2.new(0, 30, 0, 30)
+toggleBtn.Position = UDim2.new(1, -35, 0, 0)
+toggleBtn.Text = "⯈"
+toggleBtn.Font = Enum.Font.SourceSansBold
+toggleBtn.TextSize = 20
+toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 
-	-- Request server to create server-side code if not exists
-	local success = pcall(function()
-		return createRemote:InvokeServer("setup_server")
-	end)
+local isOpen = true
+toggleBtn.MouseButton1Click:Connect(function()
+    isOpen = not isOpen
+    frame.Size = isOpen and UDim2.new(0, 400, 0, 500) or UDim2.new(0, 40, 0, 30)
+    toggleBtn.Text = isOpen and "⯈" or "⯇"
+end)
 
-	----------------------------------------------------------------
-	-- GUI SECTION (Client)
-	----------------------------------------------------------------
-	local playerGui = player:WaitForChild("PlayerGui")
+-- Title
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1, -40, 0, 30)
+title.Position = UDim2.new(0, 0, 0, 0)
+title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+title.Text = "🌐 Server Browser"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.SourceSansBold
+title.TextSize = 18
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.RichText = true
 
-	local screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "GlobalPlayerListGui"
-	screenGui.ResetOnSpawn = false
-	screenGui.Parent = playerGui
+-- Search Box
+local searchBox = Instance.new("TextBox", frame)
+searchBox.Size = UDim2.new(1, -40, 0, 30)
+searchBox.Position = UDim2.new(0, 0, 0, 30)
+searchBox.PlaceholderText = "Search player..."
+searchBox.Text = ""
+searchBox.ClearTextOnFocus = false
+searchBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+searchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+searchBox.Font = Enum.Font.SourceSans
+searchBox.TextSize = 16
 
-	local frame = Instance.new("Frame")
-	frame.Size = UDim2.new(0, 260, 0, 320)
-	frame.Position = UDim2.new(1, -270, 0.5, -160)
-	frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-	frame.BorderSizePixel = 0
-	frame.Active = true
-	frame.Draggable = true
-	frame.Parent = screenGui
+-- Refresh Button
+local refreshBtn = Instance.new("TextButton", frame)
+refreshBtn.Size = UDim2.new(0, 50, 0, 24)
+refreshBtn.Position = UDim2.new(1, -60, 0, 3)
+refreshBtn.Text = "↻"
+refreshBtn.Font = Enum.Font.SourceSansBold
+refreshBtn.TextSize = 18
+refreshBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+refreshBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 
-	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, 0, 0, 30)
-	title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-	title.Text = "🌐 All Server Players"
-	title.TextColor3 = Color3.new(1, 1, 1)
-	title.Font = Enum.Font.SourceSansBold
-	title.TextSize = 18
-	title.Parent = frame
+-- Scrolling Frame for servers
+local scrollingFrame = Instance.new("ScrollingFrame", frame)
+scrollingFrame.Size = UDim2.new(1, 0, 1, -60)
+scrollingFrame.Position = UDim2.new(0, 0, 0, 60)
+scrollingFrame.BackgroundTransparency = 1
+scrollingFrame.ScrollBarThickness = 8
 
-	local refreshButton = Instance.new("TextButton")
-	refreshButton.Size = UDim2.new(0, 60, 0, 24)
-	refreshButton.Position = UDim2.new(1, -65, 0, 3)
-	refreshButton.Text = "↻"
-	refreshButton.Font = Enum.Font.SourceSansBold
-	refreshButton.TextSize = 18
-	refreshButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-	refreshButton.TextColor3 = Color3.new(1, 1, 1)
-	refreshButton.Parent = frame
+local UIListLayout = Instance.new("UIListLayout", scrollingFrame)
+UIListLayout.Padding = UDim.new(0, 3)
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
-	local scrollingFrame = Instance.new("ScrollingFrame")
-	scrollingFrame.Size = UDim2.new(1, 0, 1, -30)
-	scrollingFrame.Position = UDim2.new(0, 0, 0, 30)
-	scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-	scrollingFrame.BackgroundTransparency = 1
-	scrollingFrame.ScrollBarThickness = 6
-	scrollingFrame.Parent = frame
+-- ==============================
+-- Function to fetch and update GUI
+-- ==============================
+local function refresh()
+    local success, data = pcall(function()
+        return rf:InvokeServer()
+    end)
+    if not success or not data then return end
 
-	local UIListLayout = Instance.new("UIListLayout")
-	UIListLayout.Parent = scrollingFrame
-	UIListLayout.Padding = UDim.new(0, 3)
+    -- Filter by search text
+    local filterText = searchBox.Text:lower()
 
-	local function updateGlobalPlayers()
-		local success, players = pcall(function()
-			return createRemote:InvokeServer("get_players")
-		end)
-		if not success then return end
+    -- Clear old labels
+    for _, child in ipairs(scrollingFrame:GetChildren()) do
+        if child:IsA("TextLabel") then
+            child:Destroy()
+        end
+    end
 
-		for _, child in ipairs(scrollingFrame:GetChildren()) do
-			if child:IsA("TextLabel") then
-				child:Destroy()
-			end
-		end
+    -- Header
+    local header = Instance.new("TextLabel", scrollingFrame)
+    header.Size = UDim2.new(1, -10, 0, 20)
+    header.BackgroundTransparency = 1
+    header.TextColor3 = Color3.fromRGB(255, 255, 0)
+    header.Font = Enum.Font.SourceSansBold
+    header.TextSize = 16
+    header.Text = string.format("Servers: %d | Players: %d", data.TotalServers or 0, data.TotalPlayers or 0)
+    header.TextXAlignment = Enum.TextXAlignment.Left
 
-		for _, name in ipairs(players or {}) do
-			local label = Instance.new("TextLabel")
-			label.Size = UDim2.new(1, -10, 0, 20)
-			label.BackgroundTransparency = 1
-			label.TextColor3 = Color3.fromRGB(200, 200, 200)
-			label.Font = Enum.Font.SourceSans
-			label.TextSize = 16
-			label.Text = name
-			label.TextXAlignment = Enum.TextXAlignment.Left
-			label.Parent = scrollingFrame
-		end
+    -- List sample players with filtering
+    if data.SamplePlayers then
+        for _, name in ipairs(data.SamplePlayers) do
+            if name:lower():find(filterText) then
+                local lbl = Instance.new("TextLabel", scrollingFrame)
+                lbl.Size = UDim2.new(1, -10, 0, 20)
+                lbl.BackgroundTransparency = 1
+                lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+                lbl.Font = Enum.Font.SourceSans
+                lbl.TextSize = 16
+                lbl.Text = name
+                lbl.TextXAlignment = Enum.TextXAlignment.Left
+            end
+        end
+    end
 
-		scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, #(players or {}) * 23)
-	end
+    scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, (#scrollingFrame:GetChildren()) * 23)
+end
 
-	refreshButton.MouseButton1Click:Connect(updateGlobalPlayers)
-	updateGlobalPlayers()
+-- Connect events
+refreshBtn.MouseButton1Click:Connect(refresh)
+searchBox:GetPropertyChangedSignal("Text"):Connect(refresh)
 
-	while task.wait(20) do
-		updateGlobalPlayers()
-	end
-
-else
-	----------------------------------------------------------------
-	-- SERVER SECTION (auto-injected)
-	----------------------------------------------------------------
-	local Players = game:GetService("Players")
-	local MessagingService = game:GetService("MessagingService")
-	local MemoryStoreService = game:GetService("MemoryStoreService")
-
-	local playerStore = MemoryStoreService:GetSortedMap("GlobalPlayers")
-	local JOB_ID = game.JobId
-
-	local function updatePlayerList()
-		local playerNames = {}
-		for _, plr in ipairs(Players:GetPlayers()) do
-			table.insert(playerNames, plr.DisplayName .. "(@" .. plr.Name .. ")")
-		end
-
-		pcall(function()
-			playerStore:SetAsync(JOB_ID, playerNames, 60)
-		end)
-
-		pcall(function()
-			MessagingService:PublishAsync("GlobalPlayerListUpdated", JOB_ID)
-		end)
-	end
-
-	Players.PlayerAdded:Connect(updatePlayerList)
-	Players.PlayerRemoving:Connect(updatePlayerList)
-	updatePlayerList()
-
-	task.spawn(function()
-		while task.wait(30) do
-			updatePlayerList()
-		end
-	end)
-
-	local remote = ReplicatedStorage:FindFirstChild("GetGlobalPlayers") or Instance.new("RemoteFunction")
-	remote.Name = "GetGlobalPlayers"
-	remote.Parent = ReplicatedStorage
-
-	remote.OnServerInvoke = function(player, mode)
-		if mode == "get_players" then
-			local allPlayers = {}
-			local success, result = pcall(function()
-				return playerStore:GetRangeAsync(Enum.SortDirection.Ascending, 100)
-			end)
-
-			if success and result then
-				for _, entry in ipairs(result) do
-					local list = entry.value
-					for _, name in ipairs(list) do
-						table.insert(allPlayers, name)
-					end
-				end
-			end
-			return allPlayers
-		end
-	end
+-- Auto-refresh every 30 seconds
+refresh()
+while task.wait(30) do
+    refresh()
 end
